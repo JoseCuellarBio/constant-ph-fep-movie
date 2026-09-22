@@ -55,9 +55,15 @@ python montecarlo_pH_attempt_md_dcd.py \
   --ph 7.0 \
   --attempts-per-frame 100 \
   --seed 123 \
+  --pbc-mode none \
   --output final_states.csv \
   --attempts-output attempts.csv
 ```
+
+This example uses `--pbc-mode none`, so it runs without periodic boundary
+conditions and calculates direct Euclidean distances between atoms. Remove that
+option to use the default `auto` mode, or select another mode as described
+below.
 
 The script reads the DCD in chunks so the entire trajectory is not loaded into
 memory. Its options are:
