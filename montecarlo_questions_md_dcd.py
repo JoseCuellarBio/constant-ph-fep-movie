@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Primera etapa: hace preguntas Monte Carlo sin calcular energias."""
+"""Stage one: perform Monte Carlo trials without calculating energies."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--attempts-per-frame", type=int, default=10)
     parser.add_argument(
         "--polar", action=argparse.BooleanOptionalAction, default=True,
-        help="Activar/desactivar la penalidad polar (default: activa)",
+        help="Enable or disable the polar penalty (default: enabled)",
     )
     parser.add_argument(
         "--electrostatic", action=argparse.BooleanOptionalAction, default=True,
-        help="Activar/desactivar la penalidad electrostatica (default: activa)",
+        help="Enable or disable the electrostatic penalty (default: enabled)",
     )
     add_pbc_arguments(parser)
     return parser.parse_args()
@@ -47,7 +47,7 @@ def topology_rows(topology: md.Topology, xyz: np.ndarray) -> list[dict]:
             "residue_number": atom.residue.resSeq,
             "residue_name": atom.residue.name,
             "atom": atom.name,
-            "posicion_xyz": position,
+            "position_xyz": position,
         }
         for atom, position in zip(topology.atoms, xyz)
     ]
@@ -56,13 +56,13 @@ def topology_rows(topology: md.Topology, xyz: np.ndarray) -> list[dict]:
 def validate_topology(topology: md.Topology) -> None:
     residue_numbers = [residue.resSeq for residue in topology.residues]
     if len(residue_numbers) != len(set(residue_numbers)):
-        raise ValueError("La topologia debe tener numeros de residuo unicos.")
+        raise ValueError("The topology must have unique residue numbers.")
 
 
 def main() -> None:
     args = parse_args()
     if args.chunk < 1 or args.attempts_per_frame < 1:
-        raise ValueError("--chunk y --attempts-per-frame deben ser positivos")
+        raise ValueError("--chunk and --attempts-per-frame must be positive")
     for path in (Path(args.pdb), Path(args.dcd)):
         if not path.is_file():
             raise FileNotFoundError(path)
@@ -85,7 +85,7 @@ def main() -> None:
         if info["type"] in ("A", "B")
     ]
     if not ionizable:
-        raise ValueError("La topologia no contiene residuos ionizables.")
+        raise ValueError("The topology does not contain ionizable residues.")
 
     charge_state = protein.list_charged_residues.copy()
     columns = [f"{resname}{resid}" for resid, resname in ionizable]
@@ -105,7 +105,7 @@ def main() -> None:
         for chunk in md.iterload(args.dcd, top=args.pdb, chunk=args.chunk):
             for local_frame, xyz in enumerate(chunk.xyz):
                 for row, position in zip(rows, xyz):
-                    row["posicion_xyz"] = position
+                    row["position_xyz"] = position
                 protein.update_from_rows(rows)
                 trajectory_box = (
                     chunk.unitcell_vectors[local_frame]
@@ -149,12 +149,12 @@ def main() -> None:
                 frame_number += 1
 
     print(
-        f"Listo: {frame_number} frames, {frame_number * args.attempts_per_frame} "
-        f"preguntas, {accepted_count} cambios aceptados, "
-        f"PBC={'+'.join(sorted(pbc_sources))}. No se calcularon energias."
+        f"Done: {frame_number} frames, {frame_number * args.attempts_per_frame} "
+        f"attempts, {accepted_count} accepted changes, "
+        f"PBC={'+'.join(sorted(pbc_sources))}. No energies were calculated."
     )
-    print(f"Penalidad electrostatica: {'activa' if args.electrostatic else 'desactivada'}.")
-    print(f"Penalidad polar: {'activa' if args.polar else 'desactivada'}.")
+    print(f"Electrostatic penalty: {'enabled' if args.electrostatic else 'disabled'}.")
+    print(f"Polar penalty: {'enabled' if args.polar else 'disabled'}.")
 
 
 if __name__ == "__main__":

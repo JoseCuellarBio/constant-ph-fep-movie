@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Realiza intentos de protonacion Monte Carlo sobre una trayectoria DCD."""
+"""Perform Monte Carlo protonation attempts on a DCD trajectory."""
 
 from __future__ import annotations
 
@@ -22,41 +22,41 @@ from periodic_neighborhood import (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Lee una trayectoria DCD, hace uno o más intentos Monte Carlo por "
-            "frame y guarda el estado de carga de los residuos ionizables."
+            "Read a DCD trajectory, perform one or more Monte Carlo attempts "
+            "per frame, and save the charge state of ionizable residues."
         )
     )
-    parser.add_argument("--pdb", default="16_allatoms.pdb", help="Topologia PDB")
+    parser.add_argument("--pdb", default="16_allatoms.pdb", help="PDB topology")
     parser.add_argument(
-        "--dcd", default="16_allatoms_wrapped.dcd", help="Trayectoria DCD"
+        "--dcd", default="16_allatoms_wrapped.dcd", help="DCD trajectory"
     )
     parser.add_argument(
-        "--output", default="montecarlo_pH_out.csv", help="Archivo CSV de salida"
+        "--output", default="montecarlo_pH_out.csv", help="Output CSV file"
     )
     parser.add_argument(
         "--attempts-output",
         default="montecarlo_pH_attempts.csv",
-        help="CSV con una fila por intento Monte Carlo",
+        help="CSV with one row per Monte Carlo attempt",
     )
     parser.add_argument("--ph", type=float, default=7.0, help="pH (default: 7.0)")
     parser.add_argument(
-        "--seed", type=int, default=None, help="Semilla aleatoria reproducible"
+        "--seed", type=int, default=None, help="Random seed for reproducibility"
     )
     parser.add_argument(
-        "--chunk", type=int, default=100, help="Frames leidos por bloque"
+        "--chunk", type=int, default=100, help="Frames read per chunk"
     )
     parser.add_argument(
         "--attempts-per-frame",
         type=int,
         default=10,
-        help="Intentos Monte Carlo por frame (default: 10)",
+        help="Monte Carlo attempts per frame (default: 10)",
     )
     add_pbc_arguments(parser)
     return parser.parse_args()
 
 
 def topology_rows(topology: md.Topology, xyz: np.ndarray) -> list[dict]:
-    """Convierte un frame de MDTraj al formato que espera Protein."""
+    """Convert an MDTraj frame to the format expected by ``Protein``."""
     rows = []
     for atom, position in zip(topology.atoms, xyz):
         residue = atom.residue
@@ -65,7 +65,7 @@ def topology_rows(topology: md.Topology, xyz: np.ndarray) -> list[dict]:
                 "residue_number": residue.resSeq,
                 "residue_name": residue.name,
                 "atom": atom.name,
-                "posicion_xyz": position,
+                "position_xyz": position,
             }
         )
     return rows
@@ -75,18 +75,18 @@ def validate_topology(topology: md.Topology) -> None:
     residue_numbers = [residue.resSeq for residue in topology.residues]
     if len(residue_numbers) != len(set(residue_numbers)):
         raise ValueError(
-            "El PDB repite numeros de residuo entre cadenas. Montecarlo_2.py usa "
-            "el numero como identificador unico; renumere el PDB antes de continuar."
+            "The PDB repeats residue numbers across chains. Montecarlo_2.py uses "
+            "the number as a unique identifier; renumber the PDB before continuing."
         )
 
 
 def debye_huckel_energy_kcal(
     protein: Protein, box_vectors: np.ndarray | None = None
 ) -> float:
-    """Energia total de pH_debyeHuckelTerms.py, expresada en kcal/mol.
+    """Total energy from pH_debyeHuckelTerms.py, expressed in kcal/mol.
 
-    Usa longitud de apantallamiento de 1 nm, cutoff de 3 nm y el prefactor
-    (5 * 4.184) * 0.1 de la fuerza OpenMM original.
+    Uses a 1 nm screening length, a 3 nm cutoff, and the
+    (5 * 4.184) * 0.1 prefactor from the original OpenMM force.
     """
     charges = protein.representative_charges
     charged = np.flatnonzero(charges != 0.0)
@@ -97,8 +97,8 @@ def debye_huckel_energy_kcal(
     selected_coords = protein.representative_coords[charged]
     displacements = selected_coords[j] - selected_coords[i]
 
-    # Misma convencion periodica que CutoffPeriodic de OpenMM cuando el DCD
-    # contiene una celda; en ausencia de celda se usan distancias directas.
+    # Match OpenMM's CutoffPeriodic convention when the DCD contains a cell;
+    # without a cell, use direct distances.
     if box_vectors is not None and np.all(np.isfinite(box_vectors)):
         fractional = displacements @ np.linalg.inv(box_vectors)
         fractional -= np.rint(fractional)
@@ -110,7 +110,7 @@ def debye_huckel_energy_kcal(
         return 0.0
 
     pair_charges = charges[charged[i[valid]]] * charges[charged[j[valid]]]
-    # El 4.184 convierte el prefactor original de kJ/mol a kcal/mol.
+    # 4.184 converts the original prefactor from kJ/mol to kcal/mol.
     prefactor_kcal_nm = (5.0 * 4.184) * 0.1 / 4.184
     return float(
         prefactor_kcal_nm
@@ -121,7 +121,7 @@ def debye_huckel_energy_kcal(
 def debye_huckel_interaction_matrix(
     coords: np.ndarray, box_vectors: np.ndarray | None = None
 ) -> np.ndarray:
-    """Matriz simetrica para actualizar la energia tras cada cambio de carga."""
+    """Symmetric matrix for updating energy after each charge change."""
     displacement = coords[None, :, :] - coords[:, None, :]
     if box_vectors is not None:
         fractional = displacement @ np.linalg.inv(box_vectors)
@@ -137,9 +137,9 @@ def debye_huckel_interaction_matrix(
 def main() -> None:
     args = parse_args()
     if args.chunk < 1:
-        raise ValueError("--chunk debe ser mayor que cero")
+        raise ValueError("--chunk must be greater than zero")
     if args.attempts_per_frame < 1:
-        raise ValueError("--attempts-per-frame debe ser mayor que cero")
+        raise ValueError("--attempts-per-frame must be greater than zero")
 
     pdb_path = Path(args.pdb)
     dcd_path = Path(args.dcd)
@@ -156,9 +156,8 @@ def main() -> None:
     topology = md.load_topology(str(pdb_path))
     validate_topology(topology)
 
-    # MDTraj y Montecarlo_2 trabajan aqui en nm. Se inicializa Protein con el
-    # primer frame real del DCD, no con las coordenadas posiblemente distintas
-    # del PDB.
+    # MDTraj and Montecarlo_2 use nm here. Initialize Protein with the first
+    # actual DCD frame, not the potentially different PDB coordinates.
     first = md.load_frame(str(dcd_path), 0, top=str(pdb_path))
     rows = topology_rows(topology, first.xyz[0])
     protein = Protein(rows, pH=args.ph)
@@ -170,7 +169,7 @@ def main() -> None:
         if info["type"] in ("A", "B")
     ]
     if not ionizable:
-        raise ValueError("El PDB no contiene residuos ionizables segun Montecarlo_2.py")
+        raise ValueError("The PDB contains no ionizable residues recognized by Montecarlo_2.py")
 
     charge_state = protein.list_charged_residues.copy()
     columns = [f"{resname}{resid}" for resid, resname in ionizable]
@@ -213,7 +212,7 @@ def main() -> None:
         ):
             for local_frame, xyz in enumerate(chunk.xyz):
                 for row, position in zip(rows, xyz):
-                    row["posicion_xyz"] = position
+                    row["position_xyz"] = position
                 protein.update_from_rows(rows)
                 trajectory_box = (
                     chunk.unitcell_vectors[local_frame]
@@ -236,8 +235,8 @@ def main() -> None:
                 )
                 visited_energy_sum = 0.0
 
-                # Los intentos son secuenciales: cada uno parte del estado dejado
-                # por el anterior. Solo se registra el resultado del ultimo.
+                # Attempts are sequential: each starts from the state left by
+                # the previous attempt. Only the final result is summarized.
                 for attempt_number in range(1, args.attempts_per_frame + 1):
                     attempted_resid = protein.mc.choose_residue()
                     old_state = dict(charge_state)
@@ -283,8 +282,8 @@ def main() -> None:
                 dh_energy = debye_huckel_energy_kcal(protein, box_vectors)
                 if not np.isclose(current_energy, dh_energy):
                     raise RuntimeError(
-                        "La actualizacion incremental de energia no coincide "
-                        "con el calculo final"
+                        "The incremental energy update does not match the "
+                        "final calculation"
                     )
                 visited_mean = visited_energy_sum / args.attempts_per_frame
                 attempted_label = (
@@ -306,11 +305,11 @@ def main() -> None:
                 frame_number += 1
 
     print(
-        f"Listo: {frame_number} frames, "
-        f"{frame_number * args.attempts_per_frame} intentos, "
-        f"{accepted_count} cambios aceptados, "
+        f"Done: {frame_number} frames, "
+        f"{frame_number * args.attempts_per_frame} attempts, "
+        f"{accepted_count} accepted changes, "
         f"PBC={'+'.join(sorted(pbc_sources))}, "
-        f"salidas: {output_path} y {attempts_output_path}"
+        f"outputs: {output_path} and {attempts_output_path}"
     )
 
 

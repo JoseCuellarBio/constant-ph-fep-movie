@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Segunda etapa: calcula energias desde los estados Monte Carlo guardados."""
+"""Stage two: calculate energies from saved Monte Carlo states."""
 
 from __future__ import annotations
 
@@ -31,20 +31,20 @@ def parse_args() -> argparse.Namespace:
 def representative_atom_indices(topology: md.Topology, columns: list[str]) -> np.ndarray:
     residues = {residue.resSeq: residue for residue in topology.residues}
     if len(residues) != topology.n_residues:
-        raise ValueError("La topologia contiene numeros de residuo repetidos")
+        raise ValueError("The topology contains duplicate residue numbers")
     indices = []
     for column in columns:
         match = CHARGE_COLUMN.fullmatch(column)
         if match is None:
-            raise ValueError(f"Columna de carga invalida: {column}")
+            raise ValueError(f"Invalid charge column: {column}")
         name, number = match.groups()
         residue = residues.get(int(number))
         if residue is None or residue.name.upper() != name.upper():
-            raise ValueError(f"Residuo {column} ausente o distinto en la topologia")
+            raise ValueError(f"Residue {column} is missing or differs in the topology")
         atoms = {atom.name: atom.index for atom in residue.atoms}
         index = next((atoms[a] for a in ("CB", "CA", "O") if a in atoms), None)
         if index is None:
-            raise ValueError(f"Residuo {column} sin CB, CA u O")
+            raise ValueError(f"Residue {column} has no CB, CA, or O atom")
         indices.append(index)
     return np.asarray(indices, dtype=int)
 
@@ -66,14 +66,14 @@ def read_final_states(path: Path) -> tuple[list[str], list[np.ndarray]]:
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None or "frame" not in reader.fieldnames:
-            raise ValueError(f"CSV final invalido: {path}")
+            raise ValueError(f"Invalid final-state CSV: {path}")
         columns = [c for c in reader.fieldnames if CHARGE_COLUMN.fullmatch(c)]
         if not columns:
-            raise ValueError(f"No hay columnas de carga en {path}")
+            raise ValueError(f"No charge columns found in {path}")
         states = []
         for expected, row in enumerate(reader):
             if int(row["frame"]) != expected:
-                raise ValueError(f"Frames ausentes o desordenados en {path}")
+                raise ValueError(f"Missing or out-of-order frames in {path}")
             states.append(np.asarray([row[c] for c in columns], dtype=float))
     return columns, states
 
@@ -84,26 +84,26 @@ def read_attempts(path: Path) -> dict[int, list[dict[str, str]]]:
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames is None or not required.issubset(reader.fieldnames):
-            raise ValueError(f"CSV de intentos invalido: {path}")
+            raise ValueError(f"Invalid attempts CSV: {path}")
         for row in reader:
             grouped.setdefault(int(row["frame"]), []).append(row)
     for frame, rows in grouped.items():
         if [int(r["attempt"]) for r in rows] != list(range(1, len(rows) + 1)):
-            raise ValueError(f"Frame {frame}: intentos ausentes o desordenados")
+            raise ValueError(f"Frame {frame}: missing or out-of-order attempts")
     return grouped
 
 
 def main() -> None:
     args = parse_args()
     if args.chunk < 1:
-        raise ValueError("--chunk debe ser positivo")
+        raise ValueError("--chunk must be positive")
     for filename in (args.pdb, args.dcd, args.charges_csv, args.attempts_csv):
         if not Path(filename).is_file():
             raise FileNotFoundError(filename)
     columns, final_states = read_final_states(Path(args.charges_csv))
     grouped = read_attempts(Path(args.attempts_csv))
     if len(final_states) != len(grouped):
-        raise ValueError(f"Frames distintos: finales={len(final_states)}, intentos={len(grouped)}")
+        raise ValueError(f"Frame counts differ: final={len(final_states)}, attempts={len(grouped)}")
 
     topology = md.load_topology(args.pdb)
     atom_indices = representative_atom_indices(topology, columns)
@@ -120,17 +120,17 @@ def main() -> None:
         for chunk in md.iterload(args.dcd, top=args.pdb, chunk=args.chunk):
             for local_frame, xyz in enumerate(chunk.xyz):
                 if frame_number >= len(final_states) or frame_number not in grouped:
-                    raise ValueError(f"Frame {frame_number}: datos Monte Carlo ausentes")
+                    raise ValueError(f"Frame {frame_number}: missing Monte Carlo data")
                 final_state = final_states[frame_number]
                 attempts = grouped[frame_number]
                 if not attempts:
-                    raise ValueError(f"Frame {frame_number}: no contiene intentos")
+                    raise ValueError(f"Frame {frame_number}: contains no attempts")
                 if previous_final is None:
                     state = final_state.copy()
                     for attempt in reversed(attempts):
                         index = charge_index[attempt["residue"]]
                         if not np.isclose(state[index], float(attempt["resulting_charge"])):
-                            raise ValueError("No se pudo reconstruir el estado inicial del frame 0")
+                            raise ValueError("Could not reconstruct the initial state of frame 0")
                         state[index] = float(attempt["old_charge"])
                 else:
                     state = previous_final.copy()
@@ -152,16 +152,16 @@ def main() -> None:
                     old = float(attempt["old_charge"])
                     new = float(attempt["resulting_charge"])
                     if not np.isclose(state[index], old):
-                        raise ValueError(f"Frame {frame_number}, intento {attempt['attempt']}: estado inconsistente")
+                        raise ValueError(f"Frame {frame_number}, attempt {attempt['attempt']}: inconsistent state")
                     if not int(attempt["accepted"]) and not np.isclose(new, old):
-                        raise ValueError("Un intento rechazado cambia la carga")
+                        raise ValueError("A rejected attempt changes the charge")
                     delta = new - old
                     if delta:
                         energy += delta * float(matrix[index] @ state)
                         state[index] = new
                     visited_sum += energy
                 if not np.allclose(state, final_state):
-                    raise ValueError(f"Frame {frame_number}: el estado final no coincide")
+                    raise ValueError(f"Frame {frame_number}: final state does not match")
                 final_energy = float(0.5 * final_state @ matrix @ final_state)
                 writer.writerow([
                     frame_number, f"{final_energy:.8f}",
@@ -171,8 +171,8 @@ def main() -> None:
                 total_attempts += len(attempts)
                 frame_number += 1
     if frame_number != len(final_states):
-        raise ValueError(f"El DCD tiene {frame_number} frames y el CSV {len(final_states)}")
-    print(f"Listo: {frame_number} frames y {total_attempts} estados visitados; salida: {args.output}")
+        raise ValueError(f"The DCD has {frame_number} frames and the CSV has {len(final_states)}")
+    print(f"Done: {frame_number} frames and {total_attempts} visited states; output: {args.output}")
 
 
 if __name__ == "__main__":

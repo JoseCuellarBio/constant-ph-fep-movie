@@ -1,38 +1,37 @@
-# Constant-pH Monte Carlo sobre una trayectoria molecular
+# Constant-pH Monte Carlo on a molecular trajectory
 
-Este directorio contiene un flujo de trabajo para muestrear estados de
-protonacion sobre los frames de una trayectoria DCD. En cada intento se elige
-un residuo ionizable, se propone alternar su carga y se acepta o rechaza el
-cambio mediante un criterio de Metropolis. Los estados aceptados se conservan
-entre intentos y entre frames. A partir de esos estados tambien puede calcularse
-una energia Debye--Huckel por frame.
+This directory contains a workflow for sampling protonation states along the
+frames of a DCD trajectory. At every attempt, an ionizable residue is selected,
+a charge flip is proposed, and the change is accepted or rejected using the
+Metropolis criterion. Accepted states persist across attempts and frames. A
+per-frame Debye--Huckel energy can also be calculated from those states.
 
-El codigo **no modifica las coordenadas ni escribe una nueva trayectoria**: la
-"perturbacion" es un cambio del estado de carga asociado a cada residuo. Los
-resultados se guardan como tablas CSV que pueden usarse en un analisis posterior
-o como entrada para otro flujo de FEP.
+The code **does not modify coordinates or write a new trajectory**. Here, a
+"perturbation" means changing the charge state associated with a residue. The
+results are written to CSV tables for later analysis or as input to another FEP
+workflow.
 
-## Contenido
+## Contents
 
-| Archivo | Funcion |
+| File | Purpose |
 |---|---|
-| `Montecarlo_2.py` | Modelo de la proteina, seleccion de residuos, terminos energeticos y aceptacion de Metropolis. |
-| `periodic_neighborhood.py` | Vecindades con imagen minima para aplicar la celda periodica del DCD al Monte Carlo. |
-| `montecarlo_pH_attempt_md_dcd.py` | Flujo directo: muestrea protonaciones y calcula la energia final en una sola ejecucion. |
-| `montecarlo_questions_md_dcd.py` | Etapa 1 del flujo separado: solo muestrea y guarda los intentos. |
-| `debye_huckel_from_mc_csv.py` | Etapa 2 del flujo separado: reconstruye los estados visitados y calcula energias. |
-| `montecarlo_pH_out.csv` | Ejemplo de estados finales y energia por frame. |
-| `montecarlo_pH_attempts.csv` | Ejemplo del historial de intentos Monte Carlo. |
+| `Montecarlo_2.py` | Protein model, residue selection, energy terms, and Metropolis acceptance. |
+| `periodic_neighborhood.py` | Minimum-image neighborhoods that apply the DCD periodic cell to Monte Carlo calculations. |
+| `montecarlo_pH_attempt_md_dcd.py` | Single-stage workflow that samples protonation states and calculates final energies. |
+| `montecarlo_questions_md_dcd.py` | Stage 1 of the split workflow: samples and saves attempts only. |
+| `debye_huckel_from_mc_csv.py` | Stage 2 of the split workflow: reconstructs visited states and calculates energies. |
+| `montecarlo_pH_out.csv` | Example final states and per-frame energies. |
+| `montecarlo_pH_attempts.csv` | Example Monte Carlo attempt history. |
 
-## Requisitos
+## Requirements
 
-- Python 3.10 o posterior (se usan anotaciones de tipo con `|`).
+- Python 3.10 or later (the code uses `|` in type annotations).
 - NumPy.
 - MDTraj.
-- Un PDB que defina la topologia.
-- Un DCD con la misma cantidad y el mismo orden de atomos que el PDB.
+- A PDB file defining the topology.
+- A DCD file with the same atom count and atom order as the PDB.
 
-Instalacion minima en un entorno virtual:
+Minimal installation in a virtual environment:
 
 ```bash
 python -m venv .venv
@@ -40,242 +39,240 @@ source .venv/bin/activate
 python -m pip install numpy mdtraj
 ```
 
-Los numeros de residuo (`resSeq`) deben ser unicos en toda la topologia,
-incluidas las distintas cadenas. El programa se detiene si encuentra numeros
-repetidos. MDTraj entrega las coordenadas en nm; todas las distancias internas
-del flujo DCD se interpretan en esa unidad.
+Residue numbers (`resSeq`) must be unique across the entire topology, including
+different chains. The program stops if duplicate numbers are found. MDTraj
+provides coordinates in nm, and every internal distance in the DCD workflow is
+interpreted in that unit.
 
-## Uso rapido: muestreo y energia en una sola etapa
+## Quick start: sampling and energy in one stage
 
-Ejecutar desde este directorio:
+Run from this directory:
 
 ```bash
 python montecarlo_pH_attempt_md_dcd.py \
-  --pdb estructura.pdb \
-  --dcd trayectoria.dcd \
+  --pdb structure.pdb \
+  --dcd trajectory.dcd \
   --ph 7.0 \
   --attempts-per-frame 100 \
   --seed 123 \
-  --output estados_finales.csv \
-  --attempts-output intentos.csv
+  --output final_states.csv \
+  --attempts-output attempts.csv
 ```
 
-El script procesa el DCD por bloques para no cargar toda la trayectoria en
-memoria. Sus opciones son:
+The script reads the DCD in chunks so the entire trajectory is not loaded into
+memory. Its options are:
 
-| Opcion | Predeterminado | Descripcion |
+| Option | Default | Description |
 |---|---:|---|
-| `--pdb` | `16_allatoms.pdb` | Topologia PDB. |
-| `--dcd` | `16_allatoms_wrapped.dcd` | Trayectoria DCD. |
-| `--ph` | `7.0` | pH usado en el termino quimico. |
-| `--attempts-per-frame` | `10` | Intentos secuenciales por frame. |
-| `--seed` | sin semilla | Semilla de Python y NumPy para reproducibilidad. |
-| `--chunk` | `100` | Numero de frames leidos por bloque. |
-| `--pbc-mode` | `auto` | Seleccion de la fuente de la caja periodica. |
-| `--box-lengths LX LY LZ` | ninguna | Caja ortorrombica indicada por el usuario, en nm. |
-| `--bounds-padding` | `0.1` | Margen por lado para la caja estimada desde coordenadas, en nm. |
-| `--output` | `montecarlo_pH_out.csv` | Estado final y energia por frame. |
-| `--attempts-output` | `montecarlo_pH_attempts.csv` | Historial completo de propuestas. |
+| `--pdb` | `16_allatoms.pdb` | PDB topology. |
+| `--dcd` | `16_allatoms_wrapped.dcd` | DCD trajectory. |
+| `--ph` | `7.0` | pH used in the chemical term. |
+| `--attempts-per-frame` | `10` | Sequential attempts per frame. |
+| `--seed` | no seed | Python and NumPy seed for reproducibility. |
+| `--chunk` | `100` | Number of frames read per chunk. |
+| `--pbc-mode` | `auto` | Source of the periodic box. |
+| `--box-lengths LX LY LZ` | none | User-supplied orthorhombic box in nm. |
+| `--bounds-padding` | `0.1` | Per-side padding for a box estimated from coordinates, in nm. |
+| `--output` | `montecarlo_pH_out.csv` | Final state and energy per frame. |
+| `--attempts-output` | `montecarlo_pH_attempts.csv` | Complete proposal history. |
 
-Los nombres de entrada predeterminados no estan incluidos actualmente en este
-directorio; por eso, en general deben indicarse `--pdb` y `--dcd`.
+The default input files are not included in this directory, so `--pdb` and
+`--dcd` will usually need to be provided.
 
-## Seleccion de condiciones periodicas
+## Selecting periodic boundary conditions
 
-`--pbc-mode` permite decidir como se obtienen los vectores de celda. La misma
-seleccion se aplica a los intentos Monte Carlo y al calculo Debye--Huckel.
+`--pbc-mode` controls how cell vectors are obtained. The same choice is applied
+to both Monte Carlo attempts and the Debye--Huckel calculation.
 
-| Modo | Comportamiento |
+| Mode | Behavior |
 |---|---|
-| `auto` | Primero usa la caja guardada en el DCD; si no existe, usa `--box-lengths`; como ultimo recurso estima una caja con los limites de las coordenadas. |
-| `trajectory` | Exige una caja valida en el DCD y falla si no esta disponible. |
-| `box` | Exige `--box-lengths LX LY LZ` y construye una caja ortorrombica fija. |
-| `bounds` | Calcula por frame `L = max(xyz) - min(xyz) + 2*padding`. |
-| `none` | Desactiva las condiciones periodicas y usa distancias euclideas directas. |
+| `auto` | Uses the box stored in the DCD first, then `--box-lengths`, and finally estimates a box from the coordinate bounds. |
+| `trajectory` | Requires a valid DCD box and fails if one is unavailable. |
+| `box` | Requires `--box-lengths LX LY LZ` and builds a fixed orthorhombic box. |
+| `bounds` | Calculates `L = max(xyz) - min(xyz) + 2*padding` for every frame. |
+| `none` | Disables periodic boundary conditions and uses direct Euclidean distances. |
 
-Ejemplos:
+Examples:
 
 ```bash
-# Usar exclusivamente la celda del DCD
-python montecarlo_pH_attempt_md_dcd.py --pdb estructura.pdb \
-  --dcd trayectoria.dcd --pbc-mode trajectory
+# Use only the cell stored in the DCD
+python montecarlo_pH_attempt_md_dcd.py --pdb structure.pdb \
+  --dcd trajectory.dcd --pbc-mode trajectory
 
-# Caja ortorrombica fija de 10 x 10 x 12 nm
-python montecarlo_pH_attempt_md_dcd.py --pdb estructura.pdb \
-  --dcd trayectoria.dcd --pbc-mode box --box-lengths 10 10 12
+# Fixed 10 x 10 x 12 nm orthorhombic box
+python montecarlo_pH_attempt_md_dcd.py --pdb structure.pdb \
+  --dcd trajectory.dcd --pbc-mode box --box-lengths 10 10 12
 
-# Inferir una caja por frame y agregar 0.2 nm a cada lado
-python montecarlo_pH_attempt_md_dcd.py --pdb estructura.pdb \
-  --dcd trayectoria.dcd --pbc-mode bounds --bounds-padding 0.2
+# Infer a box per frame and add 0.2 nm on each side
+python montecarlo_pH_attempt_md_dcd.py --pdb structure.pdb \
+  --dcd trajectory.dcd --pbc-mode bounds --bounds-padding 0.2
 
-# Ignorar por completo las condiciones periodicas
-python montecarlo_pH_attempt_md_dcd.py --pdb estructura.pdb \
-  --dcd trayectoria.dcd --pbc-mode none
+# Ignore periodic boundary conditions entirely
+python montecarlo_pH_attempt_md_dcd.py --pdb structure.pdb \
+  --dcd trajectory.dcd --pbc-mode none
 ```
 
-El modo `bounds` es una aproximacion: mide la extension ocupada por los atomos,
-no necesariamente la caja fisica original. Es mas razonable con solvente
-explicito que llena la celda y puede producir resultados artificiales si el DCD
-solo contiene la proteina. El margen evita que los atomos extremos queden
-identificados exactamente como copias periodicas.
+The `bounds` mode is an approximation: it measures the extent occupied by the
+atoms, which is not necessarily the original physical box. It is more
+reasonable for explicit solvent filling the cell and can produce artifacts if
+the DCD contains only the protein. Padding prevents extreme atoms from being
+identified as exact periodic copies.
 
-## Flujo recomendado para separar muestreo y evaluacion energetica
+## Recommended split sampling and energy workflow
 
-Separar las etapas permite calcular las energias despues del muestreo y analizar
-tanto el estado final como el promedio de los estados visitados.
+Splitting the stages allows energies to be calculated after sampling and makes
+it possible to analyze both the final state and the average of visited states.
 
-### 1. Generar estados de protonacion
+### 1. Generate protonation states
 
 ```bash
 python montecarlo_questions_md_dcd.py \
-  --pdb estructura.pdb \
-  --dcd trayectoria.dcd \
+  --pdb structure.pdb \
+  --dcd trajectory.dcd \
   --ph 7.0 \
   --attempts-per-frame 100 \
   --seed 123 \
-  --output estados_finales.csv \
-  --attempts-output intentos.csv
+  --output final_states.csv \
+  --attempts-output attempts.csv
 ```
 
-Este programa exige de forma explicita las cuatro rutas de entrada/salida. Las
-opciones `--no-polar` y `--no-electrostatic` permiten desactivar, de manera
-independiente, esos terminos del criterio de aceptacion:
+This program explicitly requires all four input/output paths. The `--no-polar`
+and `--no-electrostatic` options independently disable those acceptance terms:
 
 ```bash
 python montecarlo_questions_md_dcd.py \
-  --pdb estructura.pdb --dcd trayectoria.dcd \
-  --output estados_finales.csv --attempts-output intentos.csv \
+  --pdb structure.pdb --dcd trajectory.dcd \
+  --output final_states.csv --attempts-output attempts.csv \
   --no-electrostatic
 ```
 
-### 2. Calcular las energias de los estados visitados
+### 2. Calculate energies of visited states
 
 ```bash
 python debye_huckel_from_mc_csv.py \
-  --pdb estructura.pdb \
-  --dcd trayectoria.dcd \
-  --charges-csv estados_finales.csv \
-  --attempts-csv intentos.csv \
-  --output energias.csv
+  --pdb structure.pdb \
+  --dcd trajectory.dcd \
+  --charges-csv final_states.csv \
+  --attempts-csv attempts.csv \
+  --output energies.csv
 ```
 
-La segunda etapa valida que el DCD y ambos CSV contengan los mismos frames, que
-los intentos esten ordenados y que el estado reconstruido coincida con el estado
-final guardado. Deben pasarse las mismas opciones `--pbc-mode`, `--box-lengths`
-y `--bounds-padding` usadas durante el muestreo para evaluar exactamente la
-misma geometria periodica.
+The second stage checks that the DCD and both CSV files contain the same frames,
+that attempts are ordered, and that each reconstructed state matches its saved
+final state. Pass the same `--pbc-mode`, `--box-lengths`, and `--bounds-padding`
+options used during sampling to evaluate the same periodic geometry.
 
-## Modelo de protonacion
+## Protonation model
 
-Los residuos titulables y sus cargas permitidas son:
+The allowed titratable residues and charges are:
 
-| Tipo | Residuos | Estado cargado | Estado neutro |
+| Type | Residues | Charged state | Neutral state |
 |---|---|---:|---:|
-| Acido | ASP, GLU, CYS, TYR, CTR | -1 | 0 |
-| Basico | ARG, HIS, LYS, NTR | +1 | 0 |
+| Acidic | ASP, GLU, CYS, TYR, CTR | -1 | 0 |
+| Basic | ARG, HIS, LYS, NTR | +1 | 0 |
 
-Al iniciarse, todos esos residuos se colocan en su estado cargado. Cada intento
-elige uno al azar y propone alternar entre el estado cargado y el neutro. Los
-valores de pKa usados son: ASP 4.0, GLU 4.5, HIS 6.4, CYS 8.3, TYR 11.0, LYS
-10.6, ARG 12.0, NTR 7.5 y CTR 3.5.
+All these residues start in their charged state. Each attempt chooses one at
+random and proposes switching between its charged and neutral states. The base
+(reference) pKa values are ASP 4.0, GLU 4.5, HIS 6.4, CYS 8.3, TYR 11.0, LYS
+10.6, ARG 12.0, NTR 7.5, and CTR 3.5. Effective pKa values can shift depending
+on the local protein environment, including electrostatic interactions, solvent
+exposure, hydrogen bonding, and nearby charged or polar residues.
 
-El cambio energetico de una propuesta es
+The energy change of a proposal is
 
 ```text
-Delta E = Delta E_pH + Delta E_electrostatica + Delta E_polar
+Delta E = Delta E_pH + Delta E_electrostatic + Delta E_polar
 ```
 
-con
+with
 
 ```text
 Delta E_pH = Delta q (pH - pKa) kB T ln(10)
 ```
 
-donde `T = 300 K` y `kB = 0.001987 kcal mol^-1 K^-1`. La contribucion
-electrostatica es una interaccion apantallada con longitud de apantallamiento de
-1 nm; la contribucion polar depende de la cantidad y el tipo de vecinos. Una
-propuesta con `Delta E < 0` se acepta siempre; de otro modo se acepta con
-probabilidad `exp(-Delta E / kB T)`.
+where `T = 300 K` and `kB = 0.001987 kcal mol^-1 K^-1`. The electrostatic
+contribution is a screened interaction with a 1 nm screening length; the polar
+contribution depends on the number and type of neighbors. A proposal with
+`Delta E < 0` is always accepted; otherwise, it is accepted with probability
+`exp(-Delta E / kB T)`.
 
-Para representar geometricamente cada residuo se usa `CB`; si no existe, `CA`,
-y si tampoco existe, `O`. Cuando el DCD contiene vectores de celda validos, las
-distancias de vecindad se calculan con la convencion de imagen minima. La misma
-transformacion a coordenadas fraccionarias se usa en el criterio Monte Carlo y
-en la energia Debye--Huckel. Si el DCD no contiene celda, ambos calculos usan
-distancias directas.
+Each residue is represented geometrically by `CB`, falling back to `CA` and then
+`O`. With valid DCD cell vectors, neighborhood distances use the minimum-image
+convention. The Monte Carlo criterion and Debye--Huckel energy use the same
+fractional-coordinate transformation. Without a cell, both use direct
+distances.
 
-## Energia Debye--Huckel informada
+## Reported Debye--Huckel energy
 
-La energia posterior al muestreo es distinta de `Delta E`: es una magnitud de
-salida calculada para el estado completo,
+The post-sampling energy differs from `Delta E`: it is an output quantity for
+the complete state,
 
 ```text
 E_DH = 0.5 sum(i<j) [q_i q_j / r_ij] exp(-r_ij / 1 nm)
 ```
 
-Solo se incluyen pares cargados con `0 < r_ij < 3 nm`. Si el DCD contiene
-vectores de celda validos, en este calculo si se aplica la convencion de imagen
-minima; sin celda se usan distancias directas. El resultado se etiqueta en
-`kcal/mol`, siguiendo el prefactor fijo implementado en los scripts.
+Only charged pairs with `0 < r_ij < 3 nm` are included. With valid DCD cell
+vectors, this calculation uses the minimum-image convention; otherwise, it
+uses direct distances. The result is labeled `kcal/mol`, following the fixed
+prefactor implemented in the scripts.
 
-## Formatos de salida
+## Output formats
 
-### Estado final por frame
+### Final state per frame
 
-El flujo directo produce:
+The single-stage workflow produces:
 
 ```text
 frame,attempted_residue,accepted,debye_huckel_energy_kcal_mol,debye_huckel_visited_mean_kcal_mol,visited_states,ASP1,GLU3,...
 ```
 
-En el flujo directo, `debye_huckel_energy_kcal_mol` es la energia del estado
-final y `debye_huckel_visited_mean_kcal_mol` es el promedio de las energias
-posteriores a cada intento del frame. Los intentos rechazados tambien se
-contabilizan y repiten la energia del estado anterior. `visited_states` coincide
-con `--attempts-per-frame`; el estado inicial previo al primer intento no se
-agrega como una observacion independiente.
+`debye_huckel_energy_kcal_mol` is the final-state energy, while
+`debye_huckel_visited_mean_kcal_mol` is the mean energy after every attempt in
+the frame. Rejected attempts are included and repeat the previous state's
+energy. `visited_states` equals `--attempts-per-frame`; the initial state before
+the first attempt is not an additional observation.
 
-El flujo separado omite las columnas de energia en su primera etapa. En ambos
-flujos, `attempted_residue` y `accepted` describen **solo el ultimo intento del
-frame**. Las columnas `ASP1`, `GLU3`, etc. contienen el estado final de todos los
-residuos titulables despues de completar los intentos de ese frame.
+The first stage of the split workflow omits energy columns. In both workflows,
+`attempted_residue` and `accepted` describe **only the final attempt in the
+frame**. Columns such as `ASP1` and `GLU3` contain the final state of every
+titratable residue after all attempts in that frame.
 
-### Historial de intentos
+### Attempt history
 
 ```text
 frame,attempt,residue,old_charge,proposed_charge,accepted,resulting_charge
 0,1,ASP41,-1.0,0.0,0,-1.0
 ```
 
-- `attempt` comienza en 1 dentro de cada frame.
-- `accepted` vale 1 cuando se acepta la propuesta y 0 cuando se rechaza.
-- En un rechazo, `resulting_charge` debe coincidir con `old_charge`.
+- `attempt` starts at 1 within each frame.
+- `accepted` is 1 for an accepted proposal and 0 for a rejected proposal.
+- On rejection, `resulting_charge` must equal `old_charge`.
 
-### Energia del flujo separado
+### Split-workflow energy
 
 ```text
 frame,debye_huckel_final_kcal_mol,debye_huckel_visited_mean_kcal_mol,visited_states
 ```
 
-- `debye_huckel_final_kcal_mol`: energia del estado al terminar el frame.
-- `debye_huckel_visited_mean_kcal_mol`: promedio de la energia despues de cada
-  intento, incluidos los intentos rechazados (que repiten el estado anterior).
-- `visited_states`: numero de intentos contabilizados en el promedio.
+- `debye_huckel_final_kcal_mol`: energy at the end of the frame.
+- `debye_huckel_visited_mean_kcal_mol`: mean energy after every attempt,
+  including rejected attempts that repeat the previous state.
+- `visited_states`: number of attempts included in the mean.
 
-## Reproducibilidad y consideraciones
+## Reproducibility and considerations
 
-- Use siempre `--seed` para repetir exactamente la secuencia Monte Carlo con la
-  misma version del codigo y los mismos archivos.
-- Aumentar `--attempts-per-frame` mejora el muestreo dentro de cada geometria,
-  pero tambien permite que el estado evolucione mas antes del siguiente frame.
-- Los estados no se reinician al cambiar de frame: el primer intento de un frame
-  parte del estado final del frame anterior.
-- `NTR` y `CTR` solo se reconocen si aparecen como nombres de residuo en la
-  topologia; el codigo no crea terminales titulables automaticamente.
-- Los CSV de ejemplo pueden ser grandes porque contienen una columna por cada
-  residuo titulable.
+- Always use `--seed` to reproduce the exact Monte Carlo sequence with the same
+  code version and input files.
+- Increasing `--attempts-per-frame` improves sampling within each geometry but
+  also lets the state evolve further before the next frame.
+- States are not reset between frames: the first attempt in a frame starts from
+  the final state of the previous frame.
+- `NTR` and `CTR` are recognized only when they appear as residue names in the
+  topology; the code does not create titratable termini automatically.
+- The example CSV files can be large because they contain one column per
+  titratable residue.
 
-Para consultar la interfaz exacta de un programa:
+To inspect the exact command-line interface:
 
 ```bash
 python montecarlo_pH_attempt_md_dcd.py --help
